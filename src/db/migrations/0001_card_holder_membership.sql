@@ -1,0 +1,1 @@
+ALTER TABLE "cards" ADD CONSTRAINT "cards_holder_membership_fk" FOREIGN KEY ("holder_user_id","company_id") REFERENCES "public"."company_memberships"("user_id","company_id") ON DELETE no action ON UPDATE no action;

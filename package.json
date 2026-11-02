@@ -1,0 +1,46 @@
+{
+  "name": "qred-case-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Contract-first Node.js/TypeScript API for Qred's mobile card dashboard",
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "contract:lint": "redocly lint contract/openapi.yaml",
+    "contract:docs": "redocly build-docs contract/openapi.yaml -o docs/api.html",
+    "mock": "prism mock contract/openapi.yaml --port 4010",
+    "mock:dynamic": "prism mock contract/openapi.yaml --port 4010 --dynamic",
+    "db:generate": "drizzle-kit generate",
+    "db:reset": "tsx src/db/reset.ts",
+    "typecheck": "tsc --noEmit",
+    "contract:types": "openapi-typescript contract/openapi.yaml -o src/contract/types.ts",
+    "dev": "DEMO_MODE=true tsx watch src/server.ts",
+    "start": "DEMO_MODE=true tsx src/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm contract:lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.72.1",
+    "@stoplight/prism-cli": "^5.16.0",
+    "@types/node": "^26.6.6",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "drizzle-kit": "^0.31.11",
+    "openapi-typescript": "^7.13.0",
+    "pino-pretty": "^13.2.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.14",
+    "@scalar/fastify-api-reference": "^1.76.4",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "yaml": "^2.9.1"
+  }
+}

@@ -1,0 +1,7 @@
+extends:
+  - recommended
+rules:
+  # Only local servers exist for this case study.
+  no-server-example.com: off
+  # Internal API, no public license.
+  info-license: off

@@ -1,0 +1,5 @@
+allowBuilds:
+  # Telemetry pulled in by @redocly/cli, not needed.
+  '@scarf/scarf': false
+  # Compiles TypeScript for tsx and drizzle-kit.
+  esbuild: true

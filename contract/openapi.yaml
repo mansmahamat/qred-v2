@@ -1,0 +1,494 @@
+openapi: 3.1.0
+info:
+  title: Qred Card Dashboard API
+  version: 1.0.0
+  description: |
+    Backend for the mobile card dashboard (Appendix 1 of the case study).
+
+    This file is written **before** any implementation and is the single source of truth:
+    - the mock server (Prism) is generated from it, so the frontend can start on day one;
+    - the TypeScript types for backend and frontend are generated from it;
+    - the backend's responses are tested against it.
+
+    Conventions:
+    - Money is always an integer in **minor units** (öre) plus an ISO 4217 currency.
+      `{ "minorUnits": 540000, "currency": "SEK" }` means 5 400,00 kr. Formatting is the client's job.
+    - Dates are ISO 8601 (`date` or `date-time`, UTC).
+    - Errors follow RFC 9457 (Problem Details) with a stable machine-readable `code`.
+servers:
+  - url: http://localhost:8080
+    description: Local backend
+  - url: http://localhost:4010
+    description: Local mock server (Prism)
+security:
+  - bearerAuth: []
+tags:
+  - name: Companies
+    description: Companies the user can switch between.
+  - name: Dashboard
+    description: Screen-shaped aggregate for the home view.
+  - name: Transactions
+    description: Card transaction history.
+  - name: Cards
+    description: Card state and actions.
+
+paths:
+  /v1/companies:
+    get:
+      tags: [Companies]
+      operationId: listCompanies
+      summary: Companies the current user has access to
+      description: Feeds the company selector ("Company AB ▾") at the top of the screen.
+      responses:
+        '200':
+          description: The user's companies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyList'
+              example:
+                items:
+                  - id: 3f1c2a9e-8b7d-4c6e-9a1b-2c3d4e5f6a7b
+                    name: Company AB
+                    organisationNumber: '556677-8899'
+                  - id: 7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d
+                    name: Second Company AB
+                    organisationNumber: '559900-1122'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/companies/{companyId}/dashboard:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboard
+      summary: Everything the home screen needs, in one call
+      description: |
+        Aggregate endpoint shaped after the screen, top to bottom:
+        company → due invoice → card → remaining spend → latest transactions → support.
+        One request instead of five keeps the mobile app fast on slow networks.
+
+        Card, spending and transactions are those of the **current user's card** in this company,
+        never the colleagues' cards.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+      responses:
+        '200':
+          description: The dashboard for the selected company
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+              examples:
+                activeCustomer:
+                  summary: Card waiting for activation, invoice due, 57 transactions
+                  value:
+                    company:
+                      id: 3f1c2a9e-8b7d-4c6e-9a1b-2c3d4e5f6a7b
+                      name: Company AB
+                      organisationNumber: '556677-8899'
+                    dueInvoice:
+                      id: 9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+                      amount: { minorUnits: 125000, currency: SEK }
+                      dueDate: '2026-11-15'
+                      status: due
+                    card:
+                      id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                      last4: '4242'
+                      holderName: Anna Andersson
+                      expiryMonth: 9
+                      expiryYear: 2029
+                      status: inactive
+                      imageUrl: https://cdn.qred.example/cards/standard.png
+                      availableActions: [activate]
+                    spending:
+                      limit: { minorUnits: 1000000, currency: SEK }
+                      spent: { minorUnits: 460000, currency: SEK }
+                      remaining: { minorUnits: 540000, currency: SEK }
+                      period: monthly
+                    latestTransactions:
+                      items:
+                        - id: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
+                          merchantName: Clas Ohlson
+                          category: office_supplies
+                          amount: { minorUnits: 34900, currency: SEK }
+                          type: purchase
+                          status: settled
+                          occurredAt: '2026-10-30T14:12:00Z'
+                        - id: d2e3f4a5-b6c7-4d8e-9f0a-1b2c3d4e5f6a
+                          merchantName: SJ AB
+                          category: travel
+                          amount: { minorUnits: 89500, currency: SEK }
+                          type: purchase
+                          status: pending
+                          occurredAt: '2026-10-29T07:45:00Z'
+                        - id: e3f4a5b6-c7d8-4e9f-0a1b-2c3d4e5f6a7b
+                          merchantName: Adobe
+                          category: software
+                          amount: { minorUnits: 29900, currency: SEK }
+                          type: refund
+                          status: settled
+                          occurredAt: '2026-10-27T10:00:00Z'
+                      totalCount: 57
+                    support:
+                      phone: '+46 8 123 456 78'
+                      email: support@qred.example
+                      chatUrl: https://qred.example/support/chat
+                newCustomer:
+                  summary: Empty states - no card yet, nothing to pay, no transactions
+                  value:
+                    company:
+                      id: 7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d
+                      name: Second Company AB
+                      organisationNumber: '559900-1122'
+                    dueInvoice: null
+                    card: null
+                    spending: null
+                    latestTransactions:
+                      items: []
+                      totalCount: 0
+                    support:
+                      phone: '+46 8 123 456 78'
+                      email: support@qred.example
+                      chatUrl: https://qred.example/support/chat
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/companies/{companyId}/cards/{cardId}/transactions:
+    get:
+      tags: [Transactions]
+      operationId: listCardTransactions
+      summary: Paginated transactions of one card, newest first
+      description: |
+        Backs the "54 more items in transaction view" screen. Cursor-based pagination.
+        Scoped to one card: a cardholder only sees their own card's transactions.
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+        - $ref: '#/components/parameters/CardId'
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque value taken from `nextCursor` of the previous page.
+          schema: { type: string }
+      responses:
+        '200':
+          description: One page of transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionPage'
+              example:
+                items:
+                  - id: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
+                    merchantName: Clas Ohlson
+                    category: office_supplies
+                    amount: { minorUnits: 34900, currency: SEK }
+                    type: purchase
+                    status: settled
+                    occurredAt: '2026-10-30T14:12:00Z'
+                nextCursor: eyJvIjoiMjAyNi0xMC0zMFQxNDoxMjowMFoiLCJpIjoiYzFkMiJ9
+                totalCount: 57
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/companies/{companyId}/cards/{cardId}/activate:
+    post:
+      tags: [Cards]
+      operationId: activateCard
+      summary: Activate a card
+      description: |
+        Backs the "Activate card" button.
+
+        **Idempotent:** activating an already active card returns 200 with the card, so a retry
+        after a lost response (flaky mobile network) is not shown as an error.
+        409 is returned only when activation is impossible (card blocked, frozen or expired).
+      parameters:
+        - $ref: '#/components/parameters/CompanyId'
+        - $ref: '#/components/parameters/CardId'
+      responses:
+        '200':
+          description: The card, active (whether it was activated now or already was)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+              example:
+                id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                last4: '4242'
+                holderName: Anna Andersson
+                expiryMonth: 9
+                expiryYear: 2029
+                status: active
+                imageUrl: https://cdn.qred.example/cards/standard.png
+                availableActions: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: In the demo the token is a fake one mapped to a seeded user.
+
+  parameters:
+    CompanyId:
+      name: companyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CardId:
+      name: cardId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Money:
+      type: object
+      description: |
+        Amount in minor units (öre for SEK, cents for EUR). Never a float.
+        The field name says the unit, so 540000 can't be mistaken for 540 000 kr.
+      required: [minorUnits, currency]
+      properties:
+        minorUnits: { type: integer, examples: [540000] }
+        currency: { type: string, pattern: '^[A-Z]{3}$', examples: [SEK] }
+
+    Company:
+      type: object
+      required: [id, name, organisationNumber]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        organisationNumber: { type: string }
+
+    CompanyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Company' }
+
+    Invoice:
+      type: object
+      required: [id, amount, dueDate, status]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        dueDate: { type: string, format: date }
+        status: { type: string, enum: [due, overdue] }
+
+    CardAction:
+      type: string
+      enum: [activate]
+      description: Actions the user may perform now. The backend owns this rule, the client only renders buttons.
+
+    Card:
+      type: object
+      required: [id, last4, holderName, expiryMonth, expiryYear, status, imageUrl, availableActions]
+      properties:
+        id: { type: string, format: uuid }
+        last4: { type: string, pattern: '^[0-9]{4}$' }
+        holderName: { type: string }
+        expiryMonth: { type: integer, minimum: 1, maximum: 12 }
+        expiryYear: { type: integer }
+        status: { type: string, enum: [inactive, active, frozen, blocked, expired] }
+        imageUrl: { type: string, format: uri }
+        availableActions:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/CardAction' }
+
+    Spending:
+      type: object
+      description: The "Remaining spend 5 400 / 10 000 kr" block. Computed by the backend.
+      required: [limit, spent, remaining, period]
+      properties:
+        limit: { $ref: '#/components/schemas/Money' }
+        spent: { $ref: '#/components/schemas/Money' }
+        remaining: { $ref: '#/components/schemas/Money' }
+        period: { type: string, enum: [monthly] }
+
+    Transaction:
+      type: object
+      required: [id, merchantName, category, amount, type, status, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        merchantName: { type: string }
+        category: { type: string }
+        amount:
+          $ref: '#/components/schemas/Money'
+          description: Always positive. `type` tells whether money left or came back.
+        type: { type: string, enum: [purchase, refund] }
+        status: { type: string, enum: [pending, settled, declined] }
+        occurredAt: { type: string, format: date-time }
+
+    LatestTransactions:
+      type: object
+      description: |
+        Preview for the dashboard, from the current user's card. The client shows `items` and
+        "`totalCount - items.length` more items". Empty with `totalCount: 0` when there is no card.
+      required: [items, totalCount]
+      properties:
+        items:
+          type: array
+          maxItems: 3
+          items: { $ref: '#/components/schemas/Transaction' }
+        totalCount: { type: integer, minimum: 0 }
+
+    TransactionPage:
+      type: object
+      required: [items, nextCursor, totalCount]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Transaction' }
+        nextCursor:
+          type: [string, 'null']
+          description: null when there is no next page.
+        totalCount: { type: integer, minimum: 0 }
+
+    Support:
+      type: object
+      required: [phone, email, chatUrl]
+      properties:
+        phone: { type: string }
+        email: { type: string, format: email }
+        chatUrl: { type: string, format: uri }
+
+    Dashboard:
+      type: object
+      required: [company, dueInvoice, card, spending, latestTransactions, support]
+      properties:
+        company: { $ref: '#/components/schemas/Company' }
+        dueInvoice:
+          description: The next invoice to pay, or null when nothing is due.
+          oneOf:
+            - $ref: '#/components/schemas/Invoice'
+            - type: 'null'
+        card:
+          description: The current user's card in this company, or null when they have none.
+          oneOf:
+            - $ref: '#/components/schemas/Card'
+            - type: 'null'
+        spending:
+          description: Null when there is no card, since the limit belongs to the card.
+          oneOf:
+            - $ref: '#/components/schemas/Spending'
+            - type: 'null'
+        latestTransactions: { $ref: '#/components/schemas/LatestTransactions' }
+        support: { $ref: '#/components/schemas/Support' }
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, plus a stable `code` the client can switch on.
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string, examples: [CARD_NOT_ACTIVATABLE] }
+
+  responses:
+    BadRequest:
+      description: Invalid input (malformed id in the path, bad query parameter or cursor)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          examples:
+            validationError:
+              summary: Malformed id or query parameter
+              value:
+                type: https://qred.example/problems/validation-error
+                title: Invalid request
+                status: 400
+                detail: One or more request parameters are invalid.
+                code: VALIDATION_ERROR
+            invalidCursor:
+              summary: Cursor that was not issued by the API
+              value:
+                type: https://qred.example/problems/invalid-cursor
+                title: Invalid cursor
+                status: 400
+                code: INVALID_CURSOR
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://qred.example/problems/unauthorized
+            title: Unauthorized
+            status: 401
+            code: UNAUTHORIZED
+    NotFound:
+      description: |
+        Resource not found, **or the user has no access to it**. Both cases return the same 404
+        on purpose, so the API never confirms that someone else's company or card exists.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          examples:
+            companyNotFound:
+              summary: Unknown company, or not the user's
+              value:
+                type: https://qred.example/problems/not-found
+                title: Company not found
+                status: 404
+                code: COMPANY_NOT_FOUND
+            cardNotFound:
+              summary: Unknown card, or not the user's
+              value:
+                type: https://qred.example/problems/not-found
+                title: Card not found
+                status: 404
+                code: CARD_NOT_FOUND
+    InternalError:
+      description: Unexpected server error. Logged with full details on the server, nothing internal is sent.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://qred.example/problems/internal-error
+            title: Something went wrong
+            status: 500
+            code: INTERNAL_ERROR
+    Conflict:
+      description: The action is impossible in the resource's current state
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://qred.example/problems/card-not-activatable
+            title: Card cannot be activated
+            status: 409
+            detail: The card is blocked.
+            code: CARD_NOT_ACTIVATABLE
