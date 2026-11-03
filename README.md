@@ -125,9 +125,7 @@ A card that is both blocked and expired: which status should the app show? Today
 
 ## With more time
 
-- Real login (JWT) and a hosted Postgres, instead of demo users and PGlite.
-- A CI check that blocks breaking API changes (CI already runs lint, typecheck and tests on every push).
-- Rate limiting on activation, and an audit log of who activated which card.
-- Caching the dashboard, and filters on the transaction list.
-- Monitoring: tracing and metrics.
-- Concurrency tests on a real Postgres server.
+- Real login instead of the demo tokens.
+- A hosted Postgres instead of PGlite.
+- Support for request bodies in `contractRoute`, for endpoints like "freeze card".
+- Filters on the transaction list, for example by month.
