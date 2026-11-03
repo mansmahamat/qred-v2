@@ -84,6 +84,16 @@ test/
   api.test.ts        real HTTP calls on a real Postgres, with a frozen clock
 ```
 
+### Adding an endpoint
+
+1. Describe it in `contract/openapi.yaml` (path, `operationId`, responses), then `pnpm contract:lint`.
+2. `pnpm contract:types` regenerates `src/contract/types.ts`.
+3. Add the route in `src/routes.ts` with `contractRoute('<operationId>')`: the URL and validation come from the contract.
+4. Write the use case in `src/services.ts` and any SQL in `src/repositories.ts`.
+5. Add tests in `test/api.test.ts`. Responses are checked against the contract automatically.
+
+The frontend can use the new endpoint on the mock (`pnpm mock`) as soon as step 1 is merged.
+
 ## 3. Implementation choices
 
 | Choice | Why |
@@ -103,6 +113,15 @@ This repository follows the process from my presentation: contract first, then a
 ## Open question for the PM
 
 A card that is both blocked and expired: which status should the app show? Today it shows "expired". Changing it is one line in `src/domain/rules.ts` and its test.
+
+## Known limitations
+
+- `contractRoute` reads only what this contract uses: path and query parameters and JSON responses. An endpoint with a request body needs it to read `requestBody` too.
+- If someone holds several cards in one company, the dashboard shows the newest one.
+- The transactions endpoint counts all of the card's transactions on every page, and the dashboard sums the month on every request. Fine at this size, but it would need a cached total for very active cards.
+- PGlite has a single connection, so the dashboard's parallel queries still run one after another in the demo.
+- The support details come from config, not from the database.
+- Demo users have fixed tokens. Without `DEMO_MODE=true`, every token is rejected until a real verifier is plugged in.
 
 ## With more time
 
